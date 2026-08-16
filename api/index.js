@@ -12,21 +12,26 @@ module.exports = async function handler(req, res) {
     if (!fullUrl) return res.status(400).json({ error: "URL is missing!" });
 
     try {
-        // YouTube video ki details fetch karo
-        const info = await ytdl.getInfo(fullUrl);
+        // 🛠️ FIX 1: YouTube URL se '?si=' wale extra share codes hata do
+        const cleanUrl = fullUrl.split('?si=')[0].split('&')[0];
         
-        // Sirf audio formats filter karo
-        const audioFormats = ytdl.filterFormats(info.formats, 'audioonly');
+        // Video ki details nikalo
+        const info = await ytdl.getInfo(cleanUrl);
         
-        if (audioFormats.length > 0) {
-            // Sabse acchi quality ka audio URL nikalo
-            const audioUrl = audioFormats[0].url;
-            return res.status(200).json({ audioUrl: audioUrl });
+        // 🛠️ FIX 2: Sabse best audio format select karo
+        const format = ytdl.chooseFormat(info.formats, { quality: 'highestaudio' });
+        
+        if (format && format.url) {
+            return res.status(200).json({ audioUrl: format.url });
         } else {
-            return res.status(500).json({ error: "Audio format nahi mila!" });
+            return res.status(500).json({ error: "Is video ka audio format nahi mil raha!" });
         }
     } catch (error) {
         console.error("YouTube Fetch Error:", error.message);
-        return res.status(500).json({ error: "YouTube se audio nikalne mein problem hui!" });
+        
+        // 🛠️ FIX 3: Ab error message seedha aapke admin panel ke popup (alert) mein dikhega!
+        return res.status(500).json({ 
+            error: "YouTube Error: " + error.message 
+        });
     }
 };
