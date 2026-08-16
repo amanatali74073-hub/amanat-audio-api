@@ -1,6 +1,6 @@
-import ytdl from '@distube/ytdl-core';
+const ytdl = require('@distube/ytdl-core');
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
     // CORS errors ko khatam karne ke liye
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -12,7 +12,7 @@ export default async function handler(req, res) {
     if (!fullUrl) return res.status(400).json({ error: "URL is missing!" });
 
     try {
-        // YouTube video ki details direct fetch karo
+        // YouTube video ki details fetch karo
         const info = await ytdl.getInfo(fullUrl);
         
         // Sirf audio formats filter karo
@@ -26,7 +26,7 @@ export default async function handler(req, res) {
             return res.status(500).json({ error: "Audio format nahi mila!" });
         }
     } catch (error) {
-        console.error("YouTube Fetch Error:", error);
+        console.error("YouTube Fetch Error:", error.message);
         return res.status(500).json({ error: "YouTube se audio nikalne mein problem hui!" });
     }
-}
+};
