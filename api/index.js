@@ -1,5 +1,5 @@
 module.exports = async function handler(req, res) {
-    // CORS Errors ko khatam karne ke liye
+    // CORS errors ko rokne ke liye
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept');
@@ -9,57 +9,84 @@ module.exports = async function handler(req, res) {
     const fullUrl = req.query.url;
     if (!fullUrl) return res.status(400).json({ error: "URL is missing!" });
 
+    // 🔴 MAGIC TRICK: Cloudflare ko bewakoof banane ke liye Fake Browser Identity
+    const fakeHeaders = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "application/json"
+    };
+
+    let audioUrl = null;
+
+    // ==========================================
+    // PHASE 1: Cobalt API (Sabse Fast aur Direct)
+    // ==========================================
     try {
-        // 1. YouTube URL se Video ID nikalo (Chahe link kaisa bhi ho)
+        const cobalt = await fetch("https://co.wuk.sh/api/json", {
+            method: "POST",
+            headers: {
+                ...fakeHeaders,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                url: fullUrl,
+                isAudioOnly: true,
+                aFormat: "mp3"
+            })
+        });
+
+        if (cobalt.ok) {
+            const data = await cobalt.json();
+            if (data.url) audioUrl = data.url;
+        }
+    } catch (e) {
+        console.log("Cobalt failed, trying Piped...");
+    }
+
+    // ==========================================
+    // PHASE 2: Piped APIs (Agar Cobalt fail ho jaye)
+    // ==========================================
+    if (!audioUrl) {
         let videoId = "";
-        if (fullUrl.includes("v=")) {
-            videoId = fullUrl.split("v=")[1].substring(0, 11);
-        } else if (fullUrl.includes("youtu.be/")) {
-            videoId = fullUrl.split("youtu.be/")[1].substring(0, 11);
-        }
+        if (fullUrl.includes("v=")) videoId = fullUrl.split("v=")[1].substring(0, 11);
+        else if (fullUrl.includes("youtu.be/")) videoId = fullUrl.split("youtu.be/")[1].substring(0, 11);
 
-        if (!videoId || videoId.length !== 11) {
-            return res.status(400).json({ error: "Sahi YouTube URL nahi hai!" });
-        }
+        if (videoId) {
+            // Naye aur fast Piped Servers ki list
+            const pipedServers = [
+                "https://pipedapi.kavin.rocks",
+                "https://api.piped.projectsegfau.lt",
+                "https://pipedapi.smnz.de",
+                "https://pipedapi.tokhmi.xyz"
+            ];
 
-        // 2. Duniya ke best aur working Piped Servers ki list
-        const pipedServers = [
-            "https://pipedapi.kavin.rocks",
-            "https://pipedapi.tokhmi.xyz",
-            "https://pipedapi.smnz.de",
-            "https://piped-api.garudalinux.org"
-        ];
-
-        let audioUrl = null;
-
-        // 3. Ek-ek karke server check karo (Agar ek down ho toh dusra try karega)
-        for (let api of pipedServers) {
-            try {
-                // Vercel (Node 18+) mein by default 'fetch' kaam karta hai
-                const response = await fetch(`${api}/streams/${videoId}`);
-                
-                if (!response.ok) continue; // Agar ye server down hai toh agla try karo
-                
-                const data = await response.json();
-                
-                // Audio streams filter karo aur link nikal lo
-                if (data.audioStreams && data.audioStreams.length > 0) {
-                    audioUrl = data.audioStreams[0].url;
-                    break; // Link milte hi loop (searching) band kar do
+            for (let api of pipedServers) {
+                try {
+                    // Yahan Fake Headers bhejna sabse zaroori hai
+                    const response = await fetch(`${api}/streams/${videoId}`, { 
+                        method: 'GET',
+                        headers: fakeHeaders 
+                    });
+                    
+                    if (!response.ok) continue;
+                    const data = await response.json();
+                    
+                    if (data.audioStreams && data.audioStreams.length > 0) {
+                        audioUrl = data.audioStreams[0].url;
+                        break; // Gaana milte hi dhundna band karo
+                    }
+                } catch (e) {
+                    continue;
                 }
-            } catch (e) {
-                continue; // Error aaye toh chup-chap agla server try karo
             }
         }
+    }
 
-        // 4. Final Result Admin Panel ko bhejo
-        if (audioUrl) {
-            return res.status(200).json({ audioUrl: audioUrl });
-        } else {
-            return res.status(500).json({ error: "Saare Piped servers fail ho gaye! Baad mein try karein." });
-        }
-
-    } catch (error) {
-        return res.status(500).json({ error: "Vercel Error: " + error.message });
+    // ==========================================
+    // FINAL RESULT FRONTEND KO BHEJNA
+    // ==========================================
+    if (audioUrl) {
+        return res.status(200).json({ audioUrl: audioUrl });
+    } else {
+        return res.status(500).json({ error: "Cloudflare ne Vercel ko block kar diya hai. Audio nahi mil saka!" });
     }
 };
