@@ -9,75 +9,47 @@ module.exports = async function handler(req, res) {
     const fullUrl = req.query.url;
     if (!fullUrl) return res.status(400).json({ error: "URL is missing!" });
 
-    // 🔴 MAGIC TRICK: Cloudflare ko bewakoof banane ke liye Fake Browser Identity
-    const fakeHeaders = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "application/json"
-    };
+    // 1. YouTube URL se Video ID nikalo
+    let videoId = "";
+    if (fullUrl.includes("v=")) videoId = fullUrl.split("v=")[1].substring(0, 11);
+    else if (fullUrl.includes("youtu.be/")) videoId = fullUrl.split("youtu.be/")[1].substring(0, 11);
+
+    // Agar link se ID nahi nikli toh seedha error dedo
+    if (!videoId || videoId.length !== 11) {
+        return res.status(400).json({ error: "Sahi YouTube URL nahi hai!" });
+    }
 
     let audioUrl = null;
 
     // ==========================================
-    // PHASE 1: Cobalt API (Sabse Fast aur Direct)
+    // TACTIC: Invidious API (No Cloudflare Block)
     // ==========================================
-    try {
-        const cobalt = await fetch("https://co.wuk.sh/api/json", {
-            method: "POST",
-            headers: {
-                ...fakeHeaders,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                url: fullUrl,
-                isAudioOnly: true,
-                aFormat: "mp3"
-            })
-        });
+    const invidiousInstances = [
+        "https://vid.puffyan.us",
+        "https://invidious.nerdvpn.de",
+        "https://inv.tux.pizza",
+        "https://invidious.incogniweb.net",
+        "https://invidious.lunar.icu"
+    ];
 
-        if (cobalt.ok) {
-            const data = await cobalt.json();
-            if (data.url) audioUrl = data.url;
-        }
-    } catch (e) {
-        console.log("Cobalt failed, trying Piped...");
-    }
-
-    // ==========================================
-    // PHASE 2: Piped APIs (Agar Cobalt fail ho jaye)
-    // ==========================================
-    if (!audioUrl) {
-        let videoId = "";
-        if (fullUrl.includes("v=")) videoId = fullUrl.split("v=")[1].substring(0, 11);
-        else if (fullUrl.includes("youtu.be/")) videoId = fullUrl.split("youtu.be/")[1].substring(0, 11);
-
-        if (videoId) {
-            // Naye aur fast Piped Servers ki list
-            const pipedServers = [
-                "https://pipedapi.kavin.rocks",
-                "https://api.piped.projectsegfau.lt",
-                "https://pipedapi.smnz.de",
-                "https://pipedapi.tokhmi.xyz"
-            ];
-
-            for (let api of pipedServers) {
-                try {
-                    // Yahan Fake Headers bhejna sabse zaroori hai
-                    const response = await fetch(`${api}/streams/${videoId}`, { 
-                        method: 'GET',
-                        headers: fakeHeaders 
-                    });
+    for (let instance of invidiousInstances) {
+        try {
+            // Invidious API se video ki details maango
+            const response = await fetch(`${instance}/api/v1/videos/${videoId}`);
+            
+            if (response.ok) {
+                const data = await response.json();
+                
+                // adaptiveFormats mein audio check karo
+                if (data.adaptiveFormats && data.adaptiveFormats.length > 0) {
                     
-                    if (!response.ok) continue;
-                    const data = await response.json();
-                    
-                    if (data.audioStreams && data.audioStreams.length > 0) {
-                        audioUrl = data.audioStreams[0].url;
-                        break; // Gaana milte hi dhundna band karo
-                    }
-                } catch (e) {
-                    continue;
+                    // Audio stream milte hi, proxy link bana do (itag 140 = high quality audio, local=true = Bypass YouTube Block)
+                    audioUrl = `${instance}/latest_version?id=${videoId}&itag=140&local=true`;
+                    break; // Link mil gaya, ab baaki servers check karne ki zaroorat nahi
                 }
             }
+        } catch (e) {
+            continue; // Agar ek server down ho toh agla check karo
         }
     }
 
@@ -87,6 +59,6 @@ module.exports = async function handler(req, res) {
     if (audioUrl) {
         return res.status(200).json({ audioUrl: audioUrl });
     } else {
-        return res.status(500).json({ error: "Cloudflare ne Vercel ko block kar diya hai. Audio nahi mil saka!" });
+        return res.status(500).json({ error: "Saare Invidious servers down hain ya audio nahi mila. Baad mein try karein!" });
     }
 };
