@@ -1,0 +1,9 @@
+{
+  "name": "amanat-youtube-api",
+  "version": "1.0.0",
+  "description": "YouTube Audio Fetch API",
+  "main": "index.js",
+  "dependencies": {
+    "@distube/ytdl-core": "^4.11.0"
+  }
+}
